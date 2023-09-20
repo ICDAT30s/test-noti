@@ -1,1 +1,95 @@
+import cv2
+import datetime
+import imutils
+import requests
+LINE_ACCESS_TOKEN = 'OJdClN1Tj0ER2kVa4NzqKcWu4gAEv7Ymv6vUh1eQdeh'
+url = 'https://notify-api.line.me/api/notify'
+LINE_HEADERS = {'Authorization':'Bearer '+LINE_ACCESS_TOKEN}
+session = requests.Session()
+
+cap = cv2.VideoCapture(0)  # initialize the camera
+startTime = datetime.datetime.now()  # start time
+firstFrame = None  # initialize the first frame in the video stream
+motionCounter = 0
+while True:  # loop over the frames of the video
+    timestamp = datetime.datetime.now()  # update the timestamp
+    ret, frame = cap.read()  # reading from webcam
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Converting color image to gray scale image
+
+    # test_29
+    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+
+    # test_30
+    if firstFrame is None:  # if the first frame is None, initialize it
+        firstFrame = gray
+        continue
+
+    # test_31
+    diff_frame = cv2.absdiff(firstFrame, gray)  # difference between the current frame and first frame
+    cv2.imshow("Difference Frame", diff_frame)
+
+    # test_32 q
+    # test_33(ปรับ tresfhhold)
+    thresh_frame = cv2.threshold(diff_frame, 34, 255, cv2.THRESH_BINARY)[1]  # greater than 30 show white color
+    # test_34
+    # test_35(ปรับ interation)
+    thresh_frame = cv2.dilate(thresh_frame, None, iterations=1)
+
+    # test_36
+    (cnts, _) = cv2.findContours(thresh_frame.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(frame, cnts, -1, (255, 0, 0), 2)
+    # test_37
+    # test_38 (ปรับ cv2.contourArea(contour))
+    for contour in cnts:  # loop over the contours
+        if cv2.contourArea(contour) < 3000:  # if the contour is too small, ignore it
+            continue
+        (x, y, w, h) = cv2.boundingRect(contour)  # compute the bounding box for the contour
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 1)  # draw box on the frame
+        motionCounter += 1
+
+    # test_39
+    ts = timestamp.strftime("%d %b %Y %I:%M:%S%p")  # draw timestamp on the frame
+    cv2.putText(frame, "{}".format(ts), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+
+    cv2.imshow("Threshhold Frame", thresh_frame)
+
+    cv2.imshow("GaussianBlur Gray Frame", gray)  # show the frame
+    cv2.imshow("Color Frame", frame)
+
+    # test_40
+    if (timestamp - startTime).seconds >= 10:  # if enough time has passed between uploads
+        if motionCounter >= 3:  # number of frames with consistent motion is high enough
+            print(format(ts), ' , motion = ', motionCounter, " , time = ", (timestamp - startTime).seconds)
+            # test_41
+            filename = "P" + timestamp.strftime("%Y%m%d-%H%M%S") + ".jpg"
+            cv2.imwrite(filename, frame)
+            #cv2.imwrite('capture1.png', frame)  # write the image to png file #40
+
+            height, width, channels = frame.shape
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+            filenameV = "V" + timestamp.strftime("%Y%m%d-%H%M%S") + ".mp4"
+            video = cv2.VideoWriter(filenameV, fourcc, 20, (width, height))
+
+            for i in range(200):  # Record 10 Sec
+                ret, frame = cap.read()  # reading from webcam
+                frame = imutils.resize(frame, width=640)  # resize the frame
+                video.write(frame)  # write the video to mp4 file
+                video.release()
+
+
+            firstFrame = gray  # first frame is current frame
+            startTime = timestamp  # update the last uploaded timestamp
+            motionCounter = 0
+            _, line = cv2.imencode('.jpg', frame)  # write the image to LINE Notify
+            response = session.post(url, headers=LINE_HEADERS, params={'message': 'Alert'},
+                                    files={'imageFile': line.tostring()})
+            print(response.text)
+
+    k = cv2.waitKey(1) & 0xFF# spacebar key is pressed, break from the loop
+    if k == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
 
